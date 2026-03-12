@@ -59,13 +59,31 @@ Archivo: `.env`
 | --- | --- | --- |
 | `dev` | `nodemon src/app.js` | Ejecuta en modo desarrollo con recarga |
 
-## Endpoints (base)
+## Endpoints
 
-- `POST /api/auth`
-- `GET /api/periodos`
-- `GET /api/materias`
-- `GET /api/horarios`
-- `GET /api/tareas`
+| Endpoint | Metodo | Descripcion |
+| --- | --- | --- |
+| `/api/auth` | POST | Autenticacion de usuario |
+| `/api/periodos` | GET | Lista periodos del usuario |
+| `/api/periodos/:id` | GET | Obtiene un periodo por id |
+| `/api/periodos` | POST | Crea un periodo |
+| `/api/periodos/:id` | PUT | Actualiza un periodo |
+| `/api/periodos/:id` | DELETE | Elimina un periodo |
+| `/api/materias` | GET | Lista materias del usuario |
+| `/api/materias/:id` | GET | Obtiene una materia por id |
+| `/api/materias` | POST | Crea una materia |
+| `/api/materias/:id` | PUT | Actualiza una materia |
+| `/api/materias/:id` | DELETE | Elimina una materia |
+| `/api/horarios` | GET | Lista horarios del usuario |
+| `/api/horarios/:id` | GET | Obtiene un horario por id |
+| `/api/horarios` | POST | Crea un horario |
+| `/api/horarios/:id` | PUT | Actualiza un horario |
+| `/api/horarios/:id` | DELETE | Elimina un horario |
+| `/api/tareas` | GET | Lista tareas del usuario |
+| `/api/tareas/:id` | GET | Obtiene una tarea por id |
+| `/api/tareas` | POST | Crea una tarea |
+| `/api/tareas/:id` | PUT | Actualiza una tarea |
+| `/api/tareas/:id` | DELETE | Elimina una tarea |
 
 ## Estructura
 
@@ -78,3 +96,9 @@ src/
   middlewares/
   routes/
 ```
+
+---
+
+Universidad Politecnica de Bacalar  
+Creador: Pablo Alexander Mendez Pimienta  
+Fecha: 12/03/2026
