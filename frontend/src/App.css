@@ -795,12 +795,20 @@
 
 .task-group article {
   position: relative;
+  align-items: flex-start;
 }
 
-.task-group .pill {
-  position: absolute;
-  right: 1rem;
-  top: 1rem;
+.task-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-end;
+  min-width: 140px;
+}
+
+.task-actions .actions {
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .pill.vencida {
@@ -829,16 +837,16 @@
 /* Schedule grid */
 .schedule-grid {
   display: grid;
-  grid-template-columns: 60px 1fr;
-  gap: 1rem;
+  grid-template-columns: 64px 1fr;
+  gap: 0.8rem;
 }
 
 .schedule-times {
   display: grid;
-  grid-template-rows: repeat(12, 60px);
-  gap: 0.2rem;
+  grid-template-rows: repeat(12, 56px);
   color: var(--muted);
   font-size: 0.75rem;
+  padding-top: 34px;
 }
 
 .schedule-time {
@@ -846,6 +854,7 @@
   align-items: flex-start;
   justify-content: flex-end;
   padding-right: 0.4rem;
+  height: 56px;
 }
 
 .schedule-days {
@@ -863,34 +872,66 @@
 .schedule-label {
   font-weight: 600;
   font-size: 0.85rem;
+  text-align: center;
+  padding: 0.5rem 0;
+  min-height: 32px;
 }
 
 .schedule-track {
   position: relative;
-  background: rgba(15, 23, 42, 0.03);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.04) 0%,
+    rgba(15, 23, 42, 0.02) 100%
+  );
   border-radius: 16px;
-  min-height: 720px;
+  min-height: 672px;
   padding: 0.4rem;
+  overflow: hidden;
+}
+
+.schedule-track::before {
+  content: '';
+  position: absolute;
+  inset: 0.4rem;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(15, 23, 42, 0.08),
+    rgba(15, 23, 42, 0.08) 1px,
+    transparent 1px,
+    transparent 56px
+  );
+  opacity: 0.3;
+  pointer-events: none;
+  border-radius: 12px;
 }
 
 .schedule-block {
   position: absolute;
-  left: 0.4rem;
-  right: 0.4rem;
+  left: 0.6rem;
+  right: 0.6rem;
   display: grid;
   gap: 0.2rem;
   border-radius: 12px;
-  padding: 0.4rem 0.6rem;
+  padding: 0.45rem 0.6rem;
   background: white;
   border-left: 4px solid var(--accent);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
+}
+
+.schedule-block strong {
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 .schedule-block span {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--muted);
+  line-height: 1.1;
 }
 
 @media (max-width: 1100px) {
@@ -917,3 +958,6 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+

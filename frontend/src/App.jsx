@@ -879,18 +879,6 @@ function App() {
 
         <nav>
           <button
-            className={view === 'dashboard' ? 'active' : ''}
-            onClick={() => setView('dashboard')}
-          >
-            Dashboard
-          </button>
-          <button
-            className={view === 'tareas' ? 'active' : ''}
-            onClick={() => setView('tareas')}
-          >
-            Tareas
-          </button>
-          <button
             className={view === 'periodos' ? 'active' : ''}
             onClick={() => setView('periodos')}
           >
@@ -907,6 +895,18 @@ function App() {
             onClick={() => setView('horarios')}
           >
             Horarios
+          </button>
+          <button
+            className={view === 'tareas' ? 'active' : ''}
+            onClick={() => setView('tareas')}
+          >
+            Tareas
+          </button>
+          <button
+            className={view === 'dashboard' ? 'active' : ''}
+            onClick={() => setView('dashboard')}
+          >
+            Dashboard
           </button>
         </nav>
 
@@ -1475,35 +1475,39 @@ function App() {
                             <small>{tarea.descripcion_limpia}</small>
                           )}
                         </div>
-                        <div className="actions">
-                          {!tarea.completada && (
+                        <div className="task-actions">
+                          <span className={`pill ${getTareaStatus(tarea)}`}>
+                            {getTareaStatus(tarea) === 'completada'
+                              ? 'Completada'
+                              : getTareaStatus(tarea) === 'vencida'
+                                ? 'Vencida'
+                                : 'Pendiente'}
+                          </span>
+                          <div className="actions">
+                            {!tarea.completada && (
+                              <button
+                                className="ghost"
+                                onClick={() =>
+                                  handleTareaCompletar(tarea.id_tarea)
+                                }
+                              >
+                                Completar
+                              </button>
+                            )}
                             <button
                               className="ghost"
-                              onClick={() => handleTareaCompletar(tarea.id_tarea)}
+                              onClick={() => handleTareaEdit(tarea)}
                             >
-                              Completar
+                              Editar
                             </button>
-                          )}
-                          <button
-                            className="ghost"
-                            onClick={() => handleTareaEdit(tarea)}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            className="danger"
-                            onClick={() => handleTareaDelete(tarea.id_tarea)}
-                          >
-                            Eliminar
-                          </button>
+                            <button
+                              className="danger"
+                              onClick={() => handleTareaDelete(tarea.id_tarea)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
                         </div>
-                        <span className={`pill ${getTareaStatus(tarea)}`}>
-                          {getTareaStatus(tarea) === 'completada'
-                            ? 'Completada'
-                            : getTareaStatus(tarea) === 'vencida'
-                              ? 'Vencida'
-                              : 'Pendiente'}
-                        </span>
                       </article>
                     ))}
                   </div>
@@ -1613,15 +1617,23 @@ function App() {
                           .map((horario) => {
                             const start = toMinutes(horario.hora_inicio)
                             const end = toMinutes(horario.hora_fin)
-                            const offset = start ? (start - 420) / 10 : 0
-                            const height = end && start ? (end - start) / 10 : 0
+                            const startMinutes = 420
+                            const pixelsPerMinute = 56 / 60
+                            const offset =
+                              start != null
+                                ? (start - startMinutes) * pixelsPerMinute
+                                : 0
+                            const height =
+                              end != null && start != null
+                                ? (end - start) * pixelsPerMinute
+                                : 32
                             return (
                               <button
                                 key={horario.id_horario}
                                 className="schedule-block"
                                 style={{
                                   top: `${offset}px`,
-                                  height: `${Math.max(height, 24)}px`,
+                                  height: `${Math.max(height, 36)}px`,
                                   borderLeftColor: colorForMateria(
                                     horario.id_materia
                                   ),
