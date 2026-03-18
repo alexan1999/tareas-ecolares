@@ -1,8 +1,12 @@
-﻿const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
 export async function apiFetch(path, options = {}) {
   const { method = 'GET', body, token } = options
-  const headers = { 'Content-Type': 'application/json' }
+  const headers = {}
+
+  if (body) {
+    headers['Content-Type'] = 'application/json'
+  }
 
   if (token) {
     headers.Authorization = `Bearer ${token}`

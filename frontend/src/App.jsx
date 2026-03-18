@@ -1,4 +1,4 @@
-﻿
+
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { apiFetch } from './lib/api'
@@ -6,7 +6,7 @@ import { apiFetch } from './lib/api'
 const weekDays = [
   { value: 'Lun', label: 'Lunes' },
   { value: 'Mar', label: 'Martes' },
-  { value: 'Mie', label: 'Miercoles' },
+  { value: 'Mie', label: 'Miércoles' },
   { value: 'Jue', label: 'Jueves' },
   { value: 'Vie', label: 'Viernes' },
 ]
@@ -32,7 +32,8 @@ function toLocalDateKey(date) {
 function toDateKey(value) {
   if (!value) return ''
   if (value instanceof Date) return toLocalDateKey(value)
-  return String(value).slice(0, 10)
+  const str = String(value)
+  return str.includes('T') ? str.split('T')[0] : str.slice(0, 10)
 }
 
 function toMinutes(value) {
@@ -43,6 +44,18 @@ function toMinutes(value) {
   const minutes = Number(parts[1])
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return null
   return hours * 60 + minutes
+}
+
+function formatDuration(start, end) {
+  const s = toMinutes(start)
+  const e = toMinutes(end)
+  if (s == null || e == null || e <= s) return ''
+  const total = e - s
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (h && m) return `${h}h ${m}m`
+  if (h) return `${h}h`
+  return `${m}m`
 }
 
 function formatHour(value) {
@@ -81,6 +94,9 @@ function buildCalendarDays(year, month) {
 }
 
 function App() {
+  const [theme, setTheme] = useState(() =>
+    localStorage.getItem('theme') || 'light'
+  )
   const [token, setToken] = useState(() => localStorage.getItem('token') || '')
   const [user, setUser] = useState(() => {
     const raw = localStorage.getItem('user')
@@ -88,6 +104,8 @@ function App() {
   })
   const [view, setView] = useState('dashboard')
   const [authMode, setAuthMode] = useState('login')
+  const [showReset, setShowReset] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
 
   const [banner, setBanner] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -98,7 +116,6 @@ function App() {
   const [horarios, setHorarios] = useState([])
 
   const [selectedPeriodId, setSelectedPeriodId] = useState('all')
-  const [showOnlyPending, setShowOnlyPending] = useState(false)
 
   const today = new Date()
   const [calendarMonth, setCalendarMonth] = useState(today.getMonth())
@@ -150,7 +167,46 @@ function App() {
   })
   const [editingHorarioId, setEditingHorarioId] = useState(null)
 
+  const [resetToken, setResetToken] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('reset');
+  });
+  const [newPassword, setNewPassword] = useState('');
+
   const api = (path, options) => apiFetch(path, { ...options, token })
+  const googleLoginUrl = `${
+    import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+  }/auth/google`
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tokenParam = params.get('token')
+    const userParam = params.get('user')
+    if (tokenParam && userParam) {
+      try {
+        const parsedUser = JSON.parse(decodeURIComponent(userParam))
+        setToken(tokenParam)
+        setUser(parsedUser)
+        localStorage.setItem('token', tokenParam)
+        localStorage.setItem('user', JSON.stringify(parsedUser))
+        window.history.replaceState({}, document.title, '/')
+      } catch (error) {
+        console.error('OAuth parse error', error)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    // If we have a reset token in URL and no active session, show the reset password modal
+    if (resetToken && !token) {
+      setShowReset(true);
+    }
+  }, [resetToken, token]);
 
   const notify = (type, text) => {
     setBanner({ type, text })
@@ -269,16 +325,6 @@ function App() {
     return result
   }, [visibleTareas, tareaFilters])
 
-  const groupedTareas = useMemo(() => {
-    const groups = new Map()
-    filteredTareas.forEach((tarea) => {
-      const key = toDateKey(tarea.fecha_entrega) || 'Sin fecha'
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key).push(tarea)
-    })
-    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b))
-  }, [filteredTareas])
-
   const visibleHorarios = useMemo(() => {
     if (!activePeriodId) return horarios
     return horarios.filter((horario) => horario.id_periodo === activePeriodId)
@@ -301,18 +347,6 @@ function App() {
   )
 
   const selectedDateTasks = tasksByDate.get(selectedDate) || []
-
-  const agendaTasks = useMemo(() => {
-    const base = selectedDateTasks.slice()
-    const filtered = showOnlyPending
-      ? base.filter((tarea) => getTareaStatus(tarea) === 'pendiente')
-      : base
-    return filtered.sort((a, b) => {
-      const aTime = toMinutes(a.hora_entrega) ?? 9999
-      const bTime = toMinutes(b.hora_entrega) ?? 9999
-      return aTime - bTime
-    })
-  }, [selectedDateTasks, showOnlyPending])
 
   const stats = useMemo(() => {
     const todayKey = toDateKey(new Date())
@@ -337,23 +371,6 @@ function App() {
     })
 
     return { total, completadas, pendientes, vencidas }
-  }, [visibleTareas])
-
-  const materiaStats = useMemo(() => {
-    const map = new Map()
-    visibleTareas.forEach((tarea) => {
-      const id = tarea.id_materia
-      if (!map.has(id)) {
-        map.set(id, { total: 0, completadas: 0, pendientes: 0, vencidas: 0 })
-      }
-      const stat = map.get(id)
-      stat.total += 1
-      const status = getTareaStatus(tarea)
-      if (status === 'completada') stat.completadas += 1
-      if (status === 'pendiente') stat.pendientes += 1
-      if (status === 'vencida') stat.vencidas += 1
-    })
-    return map
   }, [visibleTareas])
 
   const colorForMateria = (id) => {
@@ -422,7 +439,7 @@ function App() {
         method: 'POST',
         body: registerForm,
       })
-      notify('success', 'Registro exitoso, inicia sesion')
+      notify('success', 'Registro exitoso, inicia sesión')
       setRegisterForm({ nombre: '', correo: '', password: '' })
       setAuthMode('login')
     } catch (error) {
@@ -435,9 +452,59 @@ function App() {
   const handleLogout = () => {
     setToken('')
     setUser(null)
+    setPeriodos([])
+    setMaterias([])
+    setTareas([])
+    setHorarios([])
+    setSelectedPeriodId('all')
     localStorage.removeItem('token')
     localStorage.removeItem('user')
   }
+
+  const handleForgotPassword = async () => {
+    if (!resetEmail) {
+      notify('error', 'Por favor ingresa tu correo para recuperar.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await apiFetch('/auth/forgot-password', {
+        method: 'POST',
+        body: { correo: resetEmail },
+      });
+      notify('success', res.message);
+      setShowReset(false);
+      setResetEmail('');
+    } catch (error) {
+      notify('error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitNewPassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      notify('error', 'La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiFetch('/auth/reset-password', {
+        method: 'POST',
+        body: { token: resetToken, newPassword },
+      });
+      notify('success', 'Contraseña restablecida exitosamente. Inicia sesión.');
+      setShowReset(false);
+      setResetToken(null);
+      setNewPassword('');
+      // Limpiar URL params
+      window.history.replaceState({}, document.title, '/');
+    } catch (error) {
+      notify('error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handlePeriodoSubmit = async (event) => {
     if (!validatePeriodo()) return
@@ -709,8 +776,8 @@ function App() {
     ]
 
     const escapeCsv = (value) => {
-      const text = String(value ?? '')
-      if (text.includes('"') || text.includes(',') || text.includes('\n')) {
+      let text = String(value ?? '').replace(/\r/g, '').replace(/\n/g, ' ')
+      if (text.includes('"') || text.includes(',')) {
         return `"${text.replace(/"/g, '""')}"`
       }
       return text
@@ -734,14 +801,8 @@ function App() {
         <div className="auth-card">
           <div className="auth-header">
             <div className="auth-kicker">
-              <span className="chip">
-                <span className="chip-icon" aria-hidden="true">◇</span>
-                Campus Sync
-              </span>
-              <span className="chip outline">
-                <span className="chip-icon" aria-hidden="true">◆</span>
-                Edicion 2026
-              </span>
+              <span className="chip">Campus Sync</span>
+              <span className="chip outline">Edicion 2026</span>
             </div>
             <p className="eyebrow">Tareas Escolares</p>
             <h1>Organiza tu semestre con claridad</h1>
@@ -749,18 +810,9 @@ function App() {
               Registra periodos, materias, tareas y horarios en un solo lugar.
             </p>
             <div className="auth-pills">
-              <span>
-                <span className="chip-icon" aria-hidden="true">⌘</span>
-                Calendario inteligente
-              </span>
-              <span>
-                <span className="chip-icon" aria-hidden="true">◈</span>
-                Horario con colores
-              </span>
-              <span>
-                <span className="chip-icon" aria-hidden="true">✦</span>
-                Filtros avanzados
-              </span>
+              <span>Calendario inteligente</span>
+              <span>Horario con colores</span>
+              <span>Filtros avanzados</span>
             </div>
           </div>
 
@@ -769,7 +821,7 @@ function App() {
               className={authMode === 'login' ? 'active' : ''}
               onClick={() => setAuthMode('login')}
             >
-              Iniciar sesion
+              Iniciar sesión
             </button>
             <button
               className={authMode === 'register' ? 'active' : ''}
@@ -792,24 +844,41 @@ function App() {
                   }
                 />
               </label>
-              <label>
-                Contrasena
-                <input
-                  type="password"
-                  required
-                  value={loginForm.password}
-                  onChange={(event) =>
-                    setLoginForm({
-                      ...loginForm,
-                      password: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <button className="primary" disabled={loading}>
-                {loading ? 'Ingresando...' : 'Entrar'}
-              </button>
-            </form>
+                <label>
+                  Contraseña
+                  <input
+                    type="password"
+                    required
+                    value={loginForm.password}
+                    onChange={(event) =>
+                      setLoginForm({
+                        ...loginForm,
+                        password: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <div className="auth-row">
+                  <button
+                    className="link"
+                    type="button"
+                    onClick={() => setShowReset(true)}
+                  >
+                    Recuperar contraseña
+                  </button>
+                  <button
+                    className="google-button"
+                    type="button"
+                    onClick={() => (window.location.href = googleLoginUrl)}
+                  >
+                    <span className="google-dot">G</span>
+                    Ingresar con Google
+                  </button>
+                </div>
+                <button className="primary" disabled={loading}>
+                  {loading ? 'Ingresando...' : 'Entrar'}
+                </button>
+              </form>
           ) : (
             <form className="form" onSubmit={handleRegister}>
               <label>
@@ -840,26 +909,105 @@ function App() {
                   }
                 />
               </label>
-              <label>
-                Contrasena
-                <input
-                  type="password"
-                  required
-                  value={registerForm.password}
-                  onChange={(event) =>
-                    setRegisterForm({
-                      ...registerForm,
-                      password: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <button className="primary" disabled={loading}>
-                {loading ? 'Creando...' : 'Crear cuenta'}
-              </button>
-            </form>
-          )}
-        </div>
+                <label>
+                  Contraseña
+                  <input
+                    type="password"
+                    required
+                    value={registerForm.password}
+                    onChange={(event) =>
+                      setRegisterForm({
+                        ...registerForm,
+                        password: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <div className="auth-row">
+                  <button
+                    className="google-button"
+                    type="button"
+                    onClick={() => (window.location.href = googleLoginUrl)}
+                  >
+                    <span className="google-dot">G</span>
+                    Ingresar con Google
+                  </button>
+                </div>
+                <button className="primary" disabled={loading}>
+                  {loading ? 'Creando...' : 'Crear cuenta'}
+                </button>
+              </form>
+            )}
+            {showReset && (
+              <div className="modal-backdrop" onClick={() => {
+                setShowReset(false);
+                if (resetToken) {
+                  setResetToken(null); // Optional: clear token if they cancel
+                  window.history.replaceState({}, document.title, '/');
+                }
+              }}>
+                <div
+                  className="modal"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {resetToken ? (
+                    <>
+                      <h3>Reestablece tu contraseña</h3>
+                      <p className="muted">Escribe tu nueva clave de acceso.</p>
+                      <input
+                        type="password"
+                        placeholder="Nueva contraseña"
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <h3>Recuperar contraseña</h3>
+                      <p className="muted">
+                        Ingresa tu correo para enviarte un enlace de recuperacion.
+                      </p>
+                      <input
+                        type="email"
+                        placeholder="tu-correo@ejemplo.com"
+                        value={resetEmail}
+                        onChange={(event) => setResetEmail(event.target.value)}
+                      />
+                    </>
+                  )}
+                  
+                  <div className="modal-actions">
+                    <button className="ghost" onClick={() => {
+                      setShowReset(false);
+                      if (resetToken) {
+                        setResetToken(null);
+                        window.history.replaceState({}, document.title, '/');
+                      }
+                    }}>
+                      Cancelar
+                    </button>
+                    {resetToken ? (
+                      <button
+                        className="primary"
+                        onClick={submitNewPassword}
+                        disabled={loading}
+                      >
+                        {loading ? 'Reestableciendo...' : 'Guardar nueva contraseña'}
+                      </button>
+                    ) : (
+                      <button
+                        className="primary"
+                        onClick={handleForgotPassword}
+                        disabled={loading}
+                      >
+                        {loading ? 'Enviando...' : 'Enviar enlace'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
         {banner && <div className={`banner ${banner.type}`}>{banner.text}</div>}
       </div>
@@ -879,6 +1027,18 @@ function App() {
 
         <nav>
           <button
+            className={view === 'dashboard' ? 'active' : ''}
+            onClick={() => setView('dashboard')}
+          >
+            Dashboard
+          </button>
+          <button
+            className={view === 'tareas' ? 'active' : ''}
+            onClick={() => setView('tareas')}
+          >
+            Tareas
+          </button>
+          <button
             className={view === 'periodos' ? 'active' : ''}
             onClick={() => setView('periodos')}
           >
@@ -895,18 +1055,6 @@ function App() {
             onClick={() => setView('horarios')}
           >
             Horarios
-          </button>
-          <button
-            className={view === 'tareas' ? 'active' : ''}
-            onClick={() => setView('tareas')}
-          >
-            Tareas
-          </button>
-          <button
-            className={view === 'dashboard' ? 'active' : ''}
-            onClick={() => setView('dashboard')}
-          >
-            Dashboard
           </button>
         </nav>
 
@@ -943,15 +1091,28 @@ function App() {
                 ))}
               </select>
             </label>
+            <div className="theme-switch">
+              <span className="theme-label">Claro</span>
+              <button
+                className={`theme-toggle ${theme === 'dark' ? 'on' : ''}`}
+                type="button"
+                onClick={() =>
+                  setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
+                }
+                aria-label="Cambiar tema"
+              >
+                <span className="switch-icon sun" aria-hidden="true">
+                  ☀
+                </span>
+                <span className="knob" />
+                <span className="switch-icon moon" aria-hidden="true">
+                  ☾
+                </span>
+              </button>
+              <span className="theme-label">Oscuro</span>
+            </div>
             <button className="ghost" type="button" onClick={exportCalendar}>
               Exportar calendario
-            </button>
-            <button
-              className="ghost"
-              type="button"
-              onClick={() => setShowOnlyPending((prev) => !prev)}
-            >
-              {showOnlyPending ? 'Ver todas' : 'Ver solo pendientes'}
             </button>
             <button className="ghost" onClick={loadAll} disabled={loading}>
               {loading ? 'Actualizando...' : 'Refrescar'}
@@ -1007,27 +1168,22 @@ function App() {
                     const key = toDateKey(day)
                     const entries = tasksByDate.get(key) || []
                     const isSelected = selectedDate === key
+                    const primaryColor =
+                      entries.length > 0
+                        ? colorForMateria(entries[0].id_materia)
+                        : null
                     return (
                       <button
                         key={key}
                         className={`calendar-cell ${
                           isSelected ? 'selected' : ''
-                        }`}
+                        } ${entries.length > 0 ? 'has-tasks' : ''}`}
+                        style={
+                          primaryColor ? { '--task-color': primaryColor } : undefined
+                        }
                         onClick={() => setSelectedDate(key)}
                       >
                         <span>{day.getDate()}</span>
-                        {entries.length > 0 && (
-                          <div className="calendar-dots">
-                            {entries.slice(0, 3).map((entry) => (
-                              <span
-                                key={entry.id_tarea}
-                                style={{
-                                  background: colorForMateria(entry.id_materia),
-                                }}
-                              />
-                            ))}
-                          </div>
-                        )}
                         {entries.length > 0 && (
                           <small>
                             {entries.length} tarea
@@ -1041,30 +1197,31 @@ function App() {
               </div>
 
               <div className="calendar-detail">
-                <h3>Agenda del dia</h3>
+                <h3>Agenda del día</h3>
                 <p className="muted">{selectedDate}</p>
-                {agendaTasks.length === 0 ? (
-                  <p className="empty">
-                    {showOnlyPending
-                      ? 'No hay pendientes para esta fecha.'
-                      : 'Sin tareas para esta fecha.'}
-                  </p>
+                {selectedDateTasks.length === 0 ? (
+                  <p className="empty">Sin tareas para esta fecha.</p>
                 ) : (
                   <div className="task-list">
-                    {agendaTasks.map((tarea) => (
-                      <article key={tarea.id_tarea}>
+                    {selectedDateTasks.map((tarea) => (
+                      <article key={tarea.id_tarea} className="agenda-item">
+                        <div className="agenda-time">
+                          {tarea.hora_entrega
+                            ? formatHour(tarea.hora_entrega)
+                            : 'Sin hora'}
+                        </div>
                         <div>
                           <h4>{tarea.titulo}</h4>
                           <p>{tarea.materiaNombre}</p>
                           {tarea.descripcion_limpia && (
                             <small>{tarea.descripcion_limpia}</small>
                           )}
-                          {tarea.hora_entrega && (
-                            <small>Hora: {formatHour(tarea.hora_entrega)}</small>
-                          )}
-                          <small>
-                            Entrega: {tarea.fecha_entrega?.slice(0, 10)}
-                          </small>
+                          <div className="agenda-meta">
+                            <span>
+                              Entrega: {tarea.fecha_entrega?.slice(0, 10)}
+                            </span>
+                            <span>Estado: {getTareaStatus(tarea)}</span>
+                          </div>
                         </div>
                         <span className={`pill ${getTareaStatus(tarea)}`}>
                           {getTareaStatus(tarea) === 'completada'
@@ -1138,7 +1295,7 @@ function App() {
             <div className="card list">
               <h3>Periodos registrados</h3>
               {periodos.length === 0 ? (
-                <p className="empty">Aun no tienes periodos.</p>
+                <p className="empty">Aún no tienes periodos.</p>
               ) : (
                 periodos.map((periodo) => (
                   <article key={periodo.id_periodo}>
@@ -1245,28 +1402,6 @@ function App() {
                           )?.nombre
                         }
                       </small>
-                      <div className="materia-meta">
-                        <span
-                          className="materia-dot"
-                          style={{
-                            background: colorForMateria(materia.id_materia),
-                          }}
-                        />
-                        <span>
-                          {
-                            (materiaStats.get(materia.id_materia) || {})
-                              .total || 0
-                          }{' '}
-                          tareas
-                        </span>
-                        <span>
-                          {
-                            (materiaStats.get(materia.id_materia) || {})
-                              .completadas || 0
-                          }{' '}
-                          completadas
-                        </span>
-                      </div>
                     </div>
                     <div className="actions">
                       <button
@@ -1454,63 +1589,45 @@ function App() {
                   Limpiar
                 </button>
               </div>
-              {groupedTareas.length === 0 ? (
+              {filteredTareas.length === 0 ? (
                 <p className="empty">Sin tareas para mostrar.</p>
               ) : (
-                groupedTareas.map(([dateKey, tareasDia]) => (
-                  <div key={dateKey} className="task-group">
-                    <h4 className="task-date">{dateKey}</h4>
-                    {tareasDia.map((tarea) => (
-                      <article key={tarea.id_tarea}>
-                        <div>
-                          <h4>{tarea.titulo}</h4>
-                          <p>
-                            {tarea.materiaNombre} ·{' '}
-                            {tarea.fecha_entrega?.slice(0, 10)}
-                            {tarea.hora_entrega
-                              ? ` · ${formatHour(tarea.hora_entrega)}`
-                              : ''}
-                          </p>
-                          {tarea.descripcion_limpia && (
-                            <small>{tarea.descripcion_limpia}</small>
-                          )}
-                        </div>
-                        <div className="task-actions">
-                          <span className={`pill ${getTareaStatus(tarea)}`}>
-                            {getTareaStatus(tarea) === 'completada'
-                              ? 'Completada'
-                              : getTareaStatus(tarea) === 'vencida'
-                                ? 'Vencida'
-                                : 'Pendiente'}
-                          </span>
-                          <div className="actions">
-                            {!tarea.completada && (
-                              <button
-                                className="ghost"
-                                onClick={() =>
-                                  handleTareaCompletar(tarea.id_tarea)
-                                }
-                              >
-                                Completar
-                              </button>
-                            )}
-                            <button
-                              className="ghost"
-                              onClick={() => handleTareaEdit(tarea)}
-                            >
-                              Editar
-                            </button>
-                            <button
-                              className="danger"
-                              onClick={() => handleTareaDelete(tarea.id_tarea)}
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                filteredTareas.map((tarea) => (
+                  <article key={tarea.id_tarea}>
+                    <div>
+                      <h4>{tarea.titulo}</h4>
+                      <p>
+                        {tarea.materiaNombre} ·{' '}
+                        {tarea.fecha_entrega?.slice(0, 10)}
+                        {tarea.hora_entrega ? ` · ${tarea.hora_entrega}` : ''}
+                      </p>
+                      {tarea.descripcion_limpia && (
+                        <small>{tarea.descripcion_limpia}</small>
+                      )}
+                    </div>
+                    <div className="actions">
+                      {!tarea.completada && (
+                        <button
+                          className="ghost"
+                          onClick={() => handleTareaCompletar(tarea.id_tarea)}
+                        >
+                          Completar
+                        </button>
+                      )}
+                      <button
+                        className="ghost"
+                        onClick={() => handleTareaEdit(tarea)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="danger"
+                        onClick={() => handleTareaDelete(tarea.id_tarea)}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </article>
                 ))
               )}
             </div>
@@ -1596,63 +1713,45 @@ function App() {
 
             <div className="card list">
               <h3>Horario semanal</h3>
-              <div className="schedule-grid">
-                <div className="schedule-times">
-                  {Array.from({ length: 12 }).map((_, index) => {
-                    const hour = 7 + index
-                    return (
-                      <div key={hour} className="schedule-time">
-                        {String(hour).padStart(2, '0')}:00
-                      </div>
-                    )
-                  })}
-                </div>
-                <div className="schedule-days">
-                  {weekDays.map((day) => (
-                    <div key={day.value} className="schedule-column">
-                      <div className="schedule-label">{day.label}</div>
-                      <div className="schedule-track">
-                        {visibleHorarios
-                          .filter((horario) => horario.dia_semana === day.value)
-                          .map((horario) => {
-                            const start = toMinutes(horario.hora_inicio)
-                            const end = toMinutes(horario.hora_fin)
-                            const startMinutes = 420
-                            const pixelsPerMinute = 56 / 60
-                            const offset =
-                              start != null
-                                ? (start - startMinutes) * pixelsPerMinute
-                                : 0
-                            const height =
-                              end != null && start != null
-                                ? (end - start) * pixelsPerMinute
-                                : 32
-                            return (
-                              <button
-                                key={horario.id_horario}
-                                className="schedule-block"
-                                style={{
-                                  top: `${offset}px`,
-                                  height: `${Math.max(height, 36)}px`,
-                                  borderLeftColor: colorForMateria(
-                                    horario.id_materia
-                                  ),
-                                }}
-                                onClick={() => handleHorarioEdit(horario)}
-                                type="button"
-                              >
-                                <strong>{horario.materia}</strong>
-                                <span>
-                                  {formatHour(horario.hora_inicio)} -{' '}
-                                  {formatHour(horario.hora_fin)}
-                                </span>
-                              </button>
-                            )
-                          })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="schedule">
+                {weekDays.map((day) => (
+                  <div key={day.value} className="schedule-day">
+                    <h4>{day.label}</h4>
+                    {visibleHorarios
+                      .filter((horario) => horario.dia_semana === day.value)
+                      .map((horario) => {
+                        const blockColor = colorForMateria(horario.id_materia)
+                        const blockBg =
+                          theme === 'dark' ? `${blockColor}33` : `${blockColor}22`
+                        const textColor =
+                          theme === 'dark' ? '#f8fafc' : '#0f172a'
+                        return (
+                          <article
+                            key={horario.id_horario}
+                            className="schedule-card"
+                            style={{
+                              borderLeftColor: blockColor,
+                              background: blockBg,
+                              color: textColor,
+                            }}
+                            onClick={() => handleHorarioEdit(horario)}
+                          >
+                            <strong>{horario.materia}</strong>
+                            <span className="schedule-time">
+                              {horario.hora_inicio?.slice(0, 5)} -{' '}
+                              {horario.hora_fin?.slice(0, 5)}
+                            </span>
+                            <span className="schedule-duration">
+                              {formatDuration(
+                                horario.hora_inicio,
+                                horario.hora_fin
+                              )}
+                            </span>
+                          </article>
+                        )
+                      })}
+                  </div>
+                ))}
               </div>
             </div>
           </section>
@@ -1665,14 +1764,3 @@ function App() {
 }
 
 export default App
-
-
-
-
-
-
-
-
-
-
-
